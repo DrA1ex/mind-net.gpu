@@ -1,0 +1,67 @@
+import {ILayer} from "mind-net.js/engine/base";
+import {Matrix1D, Matrix2D} from "mind-net.js/engine/matrix";
+import {GPU, Kernel, Texture} from "gpu.js";
+
+import * as GpuUtils from "./utils/gpu";
+
+export class GpuWrappedLayer {
+    get size() {return this.layer.size}
+    get prevSize() {return this.layer.prevSize}
+    get activation() {return this.layer.activation}
+
+    get biases() {return this.layer.biases;}
+    get weights() {return this.layer.weights;}
+
+    input!: Matrix2D;
+    prime!: Matrix2D;
+    output!: Matrix2D;
+
+    forwardKernel?: Kernel;
+    backwardKernel?: Kernel;
+
+    constructor(gpu: GPU, public readonly layer: ILayer, batchSize: number) {
+        if (layer.index === 0) throw new Error("Input layer should not be wrapped");
+
+        this.forwardKernel = GpuUtils.createForwardKernel(gpu, this, batchSize);
+        this.backwardKernel = GpuUtils.createBackwardKernel(gpu, this, batchSize, layer.index === 1);
+    }
+
+    forward(input: Matrix2D, actualSize: number) {
+        if (!this.forwardKernel) throw new Error("Kernel was destroyed");
+
+        const res = (this.forwardKernel as any)(input, this.weights, this.biases, actualSize);
+        this.input = input;
+        this.prime = res.prime;
+        this.output = res.result;
+
+        return this.output;
+    }
+
+    backward(error: Matrix2D, actualSize: number) {
+        if (!this.backwardKernel) throw new Error("Kernel was destroyed");
+
+        const result = (this.backwardKernel as any)(error, this.output, this.input, this.weights, actualSize) as any;
+
+        return {
+            dB: this._toArray(result.dB) as Matrix1D,
+            dW: this._toArray(result.dW) as Matrix2D,
+            dError: this._toArray(result.dError) as Matrix2D
+        };
+    }
+
+    private _toArray(texture?: Texture | Float32Array) {
+        if (texture && "toArray" in texture) {
+            return texture.toArray();
+        }
+
+        return texture;
+    }
+
+    destroy() {
+        this.forwardKernel?.destroy();
+        this.forwardKernel = undefined;
+
+        this.backwardKernel?.destroy();
+        this.backwardKernel = undefined;
+    }
+}

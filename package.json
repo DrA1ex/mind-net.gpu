@@ -1,0 +1,42 @@
+{
+  "name": "@mind-net.js/gpu",
+  "version": "1.0.0",
+  "author": "DrA1ex",
+  "license": "BSD-3",
+  "main": "index.js",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DrA1ex/mind-net.gpu.git"
+  },
+  "homepage": "https://github.com/DrA1ex/mind-net.gpu",
+  "scripts": {
+    "build": "rm -rf ./lib/ && tsc && esbuild src/index.ts --bundle --format=esm --external:mind-net.js --external:gpu.js --outdir=./lib && cp ./package.json ./lib/",
+    "publish": "cd ./lib && npm publish && cd .."
+  },
+  "keywords": [
+    "mind-net.js",
+    "gpu",
+    "gpgpu",
+    "ml",
+    "machine-learning",
+    "deep-learning",
+    "neural-network",
+    "neural-network-engine"
+  ],
+  "dependencies": {
+    "gpu.js": "^2.16.0",
+    "mind-net.js": "^1.4.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.19.2",
+    "ts-loader": "^9.4.4",
+    "tsx": "^3.12.8",
+    "typescript": "^5.2.2"
+  },
+  "overrides": {
+    "gpu.js": {
+      "gl": "^6.0.2"
+    }
+  }
+}
