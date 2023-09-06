@@ -1,7 +1,14 @@
-import {Dense, SequentialModel, ModelSerialization, Matrix} from "mind-net.js";
+import {
+    Dense,
+    SequentialModel,
+    ModelSerialization,
+    GenerativeAdversarialModel,
+    GanSerialization,
+    Matrix
+} from "mind-net.js";
 import {IGPUSettings} from "gpu.js";
 
-import {GpuModelWrapper} from "../src";
+import {GpuGanWrapper, GpuModelWrapper} from "../src";
 
 import {SetupMockRandom} from "./mock/common";
 import * as ArrayUtils from "./utils/array";
@@ -57,5 +64,37 @@ describe("Should correctly train model", () => {
 
             ArrayUtils.arrayCloseTo(wrapped.compute([test])[0], model.compute(test), eps);
         });
+    });
+});
+
+describe("GpuGanWrapper should correctly wraps GAN model", () => {
+    test.each([1, 2, 8, 16])
+    ("%d", batchSize => {
+        const generator = new SequentialModel()
+            .addLayer(new Dense(3))
+            .addLayer(new Dense(4));
+
+        const discriminator = new SequentialModel()
+            .addLayer(new Dense(4))
+            .addLayer(new Dense(3))
+            .addLayer(new Dense(1));
+
+        const gan = new GenerativeAdversarialModel(generator, discriminator);
+
+        const ganCopy = GanSerialization.load(GanSerialization.save(gan));
+        const gpuGan = new GpuGanWrapper(ganCopy, {batchSize, gpu: gpuOptions});
+
+        const input = Matrix.random_2d(8, discriminator.inputSize);
+
+        rndMock.reset();
+        gan.train(input, {batchSize, epochs: 10});
+
+        rndMock.reset();
+        gpuGan.train(input, {epochs: 10});
+
+        const test = Matrix.random_1d(generator.inputSize);
+        const generated = generator.compute(test);
+        ArrayUtils.arrayCloseTo(generated, gpuGan.compute([test])[0], eps);
+        ArrayUtils.arrayCloseTo(discriminator.compute(generated), ganCopy.discriminator.compute(generated), eps);
     });
 });
