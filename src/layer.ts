@@ -19,16 +19,22 @@ export class GpuWrappedLayer {
     forwardKernel?: Kernel;
     backwardKernel?: Kernel;
 
-    constructor(gpu: GPU, public readonly layer: ILayer, batchSize: number) {
+    private acquiredKernels: Kernel[] = [];
+
+    constructor(gpu: GPU, public readonly layer: ILayer, index: number, batchSize: number) {
         if (layer.index === 0) throw new Error("Input layer should not be wrapped");
 
-        this.forwardKernel = GpuUtils.createForwardKernel(gpu, this, batchSize);
-        this.backwardKernel = GpuUtils.createBackwardKernel(gpu, this, batchSize, layer.index === 1);
+        let res = GpuUtils.createForwardKernel(gpu, this, batchSize);
+        this.forwardKernel = res[0];
+        this.acquiredKernels.push(...res[1]);
+
+        res = GpuUtils.createBackwardKernel(gpu, this, batchSize, index === 1);
+        this.backwardKernel = res[0];
+        this.acquiredKernels.push(...res[1]);
     }
 
     forward(input: Matrix2D, actualSize: number) {
         if (!this.forwardKernel) throw new Error("Kernel was destroyed");
-
         const res = (this.forwardKernel as any)(input, this.weights, this.biases, actualSize);
         this.input = input;
         this.prime = res.prime;
@@ -40,7 +46,7 @@ export class GpuWrappedLayer {
     backward(error: Matrix2D, actualSize: number) {
         if (!this.backwardKernel) throw new Error("Kernel was destroyed");
 
-        const result = (this.backwardKernel as any)(error, this.output, this.input, this.weights, actualSize) as any;
+        const result = (this.backwardKernel as any)(error, this.prime, this.input, this.weights, actualSize) as any;
 
         return {
             dB: this._toArray(result.dB) as Matrix1D,
@@ -58,10 +64,13 @@ export class GpuWrappedLayer {
     }
 
     destroy() {
-        this.forwardKernel?.destroy();
         this.forwardKernel = undefined;
-
-        this.backwardKernel?.destroy();
         this.backwardKernel = undefined;
+
+        for (let kernel of this.acquiredKernels) {
+            kernel.destroy();
+        }
+
+        this.acquiredKernels = [];
     }
 }

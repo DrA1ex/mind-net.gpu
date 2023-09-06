@@ -1,5 +1,6 @@
 import {ISingleValueActivation} from "mind-net.js/engine/base";
-import {GPU} from "gpu.js";
+import {Matrix1D} from "mind-net.js/engine/matrix";
+import {GPU, Kernel} from "gpu.js";
 
 import {GpuWrappedLayer} from "../layer";
 import * as FunctionUtils from "./function";
@@ -12,10 +13,12 @@ export function getActivation(layer: GpuWrappedLayer): ISingleValueActivation {
     return activation as ISingleValueActivation;
 }
 
-export function createForwardKernel(gpu: GPU, layer: GpuWrappedLayer, batchSize: number) {
+export function createForwardKernel(
+    gpu: GPU, layer: GpuWrappedLayer, batchSize: number
+): [Kernel, Kernel[]] {
     const activation = getActivation(layer);
 
-    return gpu
+    const kResult = gpu
         .addFunction(FunctionUtils.getGpuActivationFunction(activation, activation.value, "forward") as any)
         .createKernelMap({
             prime: function (input: number[][], weights: number[][], biases: number[], actualSize: number) {
@@ -39,9 +42,13 @@ export function createForwardKernel(gpu: GPU, layer: GpuWrappedLayer, batchSize:
         .setConstants({prevSize: layer.prevSize})
         .setOutput([layer.size, batchSize])
         .setTactic("precision");
+
+    return [kResult, [kResult]];
 }
 
-export function createBackwardKernel(gpu: GPU, layer: GpuWrappedLayer, batchSize: number, skipErrorCalc: boolean) {
+export function createBackwardKernel(
+    gpu: GPU, layer: GpuWrappedLayer, batchSize: number, skipErrorCalc: boolean
+): [Kernel, Kernel[]] {
     const activation = getActivation(layer);
 
     const kGradient = gpu
@@ -109,7 +116,7 @@ export function createBackwardKernel(gpu: GPU, layer: GpuWrappedLayer, batchSize
     const kernels = [kGradient, kBiases, kWeights, kError].filter(k => !!k);
     kernels.forEach(k => k.setTactic("precision"));
 
-    return gpu.combineKernels(
+    const kResult = gpu.combineKernels(
         ...kernels,
         function (error: number[][], prime: number[][], input: number[][], weights: number[][], actualSize: number) {
             const gradient = kGradient(prime, error, actualSize);
@@ -119,4 +126,6 @@ export function createBackwardKernel(gpu: GPU, layer: GpuWrappedLayer, batchSize
 
             return {dB, dW, dError}
         });
+
+    return [kResult, kernels];
 }
