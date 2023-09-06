@@ -12,7 +12,8 @@
   "homepage": "https://github.com/DrA1ex/mind-net.gpu",
   "scripts": {
     "test": "NODE_OPTIONS=--experimental-vm-modules npx jest",
-    "build": "rm -rf ./lib/ && tsc && esbuild src/index.ts --bundle --format=esm --external:mind-net.js --external:gpu.js --outdir=./lib && cp ./package.json ./lib/ && cp ./README.md ./lib/",
+    "bundle": "rm -rf ./lib/ && tsc && esbuild src/index.ts --bundle --format=esm --external:mind-net.js --external:gpu.js --outdir=./lib && cp ./package.json ./lib/ && cp ./README.md ./lib/",
+    "build": "npm run test && npm run bundle",
     "publish": "cd ./lib && npm publish --access public && cd .."
   },
   "keywords": [

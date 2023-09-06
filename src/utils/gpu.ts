@@ -1,5 +1,4 @@
 import {ISingleValueActivation} from "mind-net.js/engine/base";
-import {Matrix1D} from "mind-net.js/engine/matrix";
 import {GPU, Kernel} from "gpu.js";
 
 import {GpuWrappedLayer} from "../layer";
