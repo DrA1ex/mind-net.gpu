@@ -48,7 +48,7 @@ export class GpuModelWrapper {
 
         const result: Matrix2D = [];
         for (const batch of Iter.partition(input, this.batchSize)) {
-            const out = this.forward(batch);
+            const out = this.forward(batch, false);
             result.push(...out);
         }
 
@@ -76,7 +76,7 @@ export class GpuModelWrapper {
         const input = batch.map(b => b[0]);
         const expected = batch.map(b => b[1]);
 
-        const predicted = this.forward(input);
+        const predicted = this.forward(input, true);
         this.backward(predicted, expected);
     }
 
@@ -90,14 +90,14 @@ export class GpuModelWrapper {
         this._destroyed = true;
     }
 
-    private forward(input: Matrix2D): Matrix2D {
+    private forward(input: Matrix2D, isTraining: boolean): Matrix2D {
         if (input.length > this.batchSize) throw new Error("Input can't be greater than batchSize")
         if (input[0].length !== this.inputSize) throw new Error(`Wrong input dimension. Expected ${this.inputSize} got ${input[0].length}`);
 
         this.actualSize = input.length;
         let nexInput = input;
         for (const layer of this.layers) {
-            nexInput = layer.forward(nexInput, this.actualSize);
+            nexInput = layer.forward(nexInput, this.actualSize, isTraining);
         }
 
         return nexInput.slice(0, this.actualSize);

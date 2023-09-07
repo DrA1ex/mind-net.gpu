@@ -47,14 +47,14 @@ describe.each([1, 4, 8])
         const eps = 1e-3;
 
         test("Layer.forward", () => {
-            const layer = new Dense(size, {activation});
+            const layer = new Dense(size, {activation: activation as any});
             layer.build(1, 4, false);
             const wrapped = new GpuWrappedLayer(gpu, layer, 1, 1);
 
             const input = Matrix.random_1d(32);
 
             const layerOut = layer.step(input);
-            const wrapperOut = wrapped.forward([input], 1);
+            const wrapperOut = wrapped.forward([input], 1, false);
 
             ArrayUtils.arrayCloseTo(layerOut, wrapped.prime[0], eps);
 
@@ -64,7 +64,7 @@ describe.each([1, 4, 8])
 
         test("Layer.backward", () => {
             const optimizer = new SgdOptimizer();
-            const layer = new Dense(size, {activation});
+            const layer = new Dense(size, {activation: activation as any});
             layer.build(1, 4, false);
             const wrapped = new GpuWrappedLayer(gpu, layer, 2, 1);
 
@@ -80,7 +80,7 @@ describe.each([1, 4, 8])
             const gradient = optimizer.step(layer, error, 0);
             const dError = layer.backward(gradient, dWeights, dBiases);
 
-            wrapped.forward([forwardInput], 1);
+            wrapped.forward([forwardInput], 1, false);
             const res = wrapped.backward([error], 1);
 
             //ArrayUtils.arrayCloseTo_2d(dWeights, res.dW, eps);
@@ -111,7 +111,7 @@ describe("GpuWrappedLayer.destroy", () => {
             const wrapped = _wrappedLayer();
             wrapped.destroy();
 
-            wrapped.forward([new Array(8)], 1);
+            wrapped.forward([new Array(8)], 1, false);
         });
 
         test.failing("backward", () => {

@@ -65,6 +65,41 @@ describe("Should correctly train model", () => {
             ArrayUtils.arrayCloseTo(wrapped.compute([test])[0], model.compute(test), eps);
         });
     });
+
+    describe("Should correctly apply regularization", () => {
+        test.each([
+            {},
+            {l1BiasRegularization: 0.1, l1WeightRegularization: 0.2},
+            {l2BiasRegularization: 0.2, l2WeightRegularization: 0.3},
+            {l1BiasRegularization: 0.01, l2BiasRegularization: 0.02},
+            {l1WeightRegularization: 0.0004, l2BiasRegularization: 0.0003},
+            {dropout: 0.1, l1WeightRegularization: 0.04},
+            {dropout: 0.5},
+        ])
+        ("%p", (options) => {
+            const batchSize = 8;
+            const model = new SequentialModel()
+                .addLayer(new Dense(3))
+                .addLayer(new Dense(5, {options}))
+                .addLayer(new Dense(6, {options}));
+            model.compile();
+
+            const modelCopy = ModelSerialization.load(ModelSerialization.save(model));
+            const wrapped = new GpuModelWrapper(modelCopy, {batchSize, gpu: gpuOptions});
+
+            const input = Matrix.random_2d(batchSize, model.inputSize);
+            const output = Matrix.random_2d(batchSize, model.outputSize);
+
+            rndMock.reset();
+            model.train(input, output, {batchSize, epochs: 10, progress: false});
+
+            rndMock.reset();
+            wrapped.train(input, output, {epochs: 10});
+
+            const test = Matrix.random_1d(model.inputSize);
+            ArrayUtils.arrayCloseTo(wrapped.compute([test])[0], model.compute(test), eps);
+        })
+    });
 });
 
 describe("GpuGanWrapper should correctly wraps GAN model", () => {

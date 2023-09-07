@@ -1,5 +1,6 @@
 import {ILayer} from "mind-net.js/engine/base";
 import {Matrix1D, Matrix2D} from "mind-net.js/engine/matrix";
+import {Dropout, Matrix} from "mind-net.js";
 import {GPU, Kernel, Texture} from "gpu.js";
 
 import * as GpuUtils from "./utils/gpu";
@@ -20,6 +21,7 @@ export class GpuWrappedLayer {
     backwardKernel?: Kernel;
 
     private acquiredKernels: Kernel[] = [];
+    private dropouts: Dropout[];
 
     constructor(gpu: GPU, public readonly layer: ILayer, index: number, batchSize: number) {
         if (layer.index === 0) throw new Error("Input layer should not be wrapped");
@@ -31,20 +33,35 @@ export class GpuWrappedLayer {
         res = GpuUtils.createBackwardKernel(gpu, this, batchSize, index === 1);
         this.backwardKernel = res[0];
         this.acquiredKernels.push(...res[1]);
+
+        this.dropouts = Matrix.fill(() => new Dropout(layer), batchSize);
     }
 
-    forward(input: Matrix2D, actualSize: number) {
+    forward(input: Matrix2D, actualSize: number, isTraining: boolean) {
         if (!this.forwardKernel) throw new Error("Kernel was destroyed");
         const res = (this.forwardKernel as any)(input, this.weights, this.biases, actualSize);
         this.input = input;
         this.prime = res.prime;
         this.output = res.result;
 
+        if (isTraining && this.layer.dropout > 0) {
+            for (let i = 0; i < actualSize; i++) {
+                this.dropouts[i].calculateMask();
+                this.dropouts[i].applyMask(this.output[i]);
+            }
+        }
+
         return this.output;
     }
 
     backward(error: Matrix2D, actualSize: number) {
         if (!this.backwardKernel) throw new Error("Kernel was destroyed");
+
+        if (this.layer.dropout > 0) {
+            for (let i = 0; i < actualSize; i++) {
+                this.dropouts[i].applyMask(error[i]);
+            }
+        }
 
         const result = (this.backwardKernel as any)(error, this.prime, this.input, this.weights, actualSize) as any;
 
