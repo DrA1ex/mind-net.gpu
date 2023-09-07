@@ -10,7 +10,17 @@ npm install mind-net.js
 npm install @mind-net.js/gpu
 ```
 
-2. Use imported bindong
+_Optionally_, if you encounter any build issues, you can add overrides for the gl package by modifying your package.json configuration as follows: 
+```javascript
+{
+    //...
+    "overrides": {
+        "gl": "^6.0.2"
+    }
+}
+```
+
+2. Use imported binding
 ```javascript
 import {SequentialModel, Dense} from "mind-net.js";
 import {GpuModelWrapper} from "@mind-net.js/gpu";
