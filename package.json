@@ -28,7 +28,7 @@
   ],
   "dependencies": {
     "gpu.js": "^2.16.0",
-    "mind-net.js": "^1.4.2"
+    "mind-net.js": "^1.4.3"
   },
   "devDependencies": {
     "@types/jest": "^29.5.4",

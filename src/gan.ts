@@ -1,7 +1,14 @@
 import {Matrix1D, Matrix2D} from "mind-net.js/engine/matrix";
-import {GenerativeAdversarialModel, Iter, Matrix} from "mind-net.js";
+import {ProgressFn} from "mind-net.js/utils/fetch";
+import {GenerativeAdversarialModel, Iter, Matrix, ProgressUtils} from "mind-net.js";
 
-import {GpuModelWrapper, GpuWrapperOptionsT, GpuWrapperOptsDefault} from "./model";
+import {
+    GpuModelWrapper,
+    GpuWrapperOptionsT,
+    GpuWrapperOptsDefault,
+    GpuWrapperTrainDefaultOpts,
+    GpuWrapperTrainOptionsT
+} from "./model";
 
 export class GpuGanWrapper {
     readonly chain: GpuModelWrapper;
@@ -23,25 +30,38 @@ export class GpuGanWrapper {
         return this.generator.compute(input);
     }
 
-    public train(real: Matrix1D[], {epochs = 1} = {}) {
-        for (let i = 0; i < epochs; i++) {
+    public train(real: Matrix1D[], options: Partial<GpuWrapperTrainOptionsT> = {}) {
+        const opts = {...GpuWrapperTrainDefaultOpts, ...options};
+
+        const batchCtrl = opts.progress
+            ? ProgressUtils.progressBatchCallback(
+                3, Math.ceil(real.length / this.batchSize) * opts.epochs, opts.progressOptions
+            ) : undefined;
+
+        batchCtrl?.progress();
+        for (let i = 0; i < opts.epochs; i++) {
             this.beforeTrain();
 
             const shuffledTrainSet = Iter.shuffled(real);
             for (const batch of Iter.partition(shuffledTrainSet, this.batchSize)) {
-                this.trainBatch(batch);
+                this.trainBatch(batch, batchCtrl?.progressFn);
+                batchCtrl?.addBatch();
             }
 
             this.afterTrain();
         }
     }
 
-    public trainBatch(batch: Matrix1D[]) {
+    public trainBatch(batch: Matrix1D[], progressFn?: ProgressFn) {
+        const totalProgress = 3;
+        let currentBatch = 0;
+
         const almostOnes = Matrix.fill_value([0.9], batch.length);
         const zeros = Matrix.fill_value([0], batch.length);
         const noise = Matrix.random_normal_2d(batch.length, this.generator.inputSize, -1, 1);
 
         const fake = this.generator.compute(noise);
+        if (progressFn) progressFn(++currentBatch, totalProgress);
 
         this.discriminator.trainBatch(
             Array.from(Iter.zip_iter(
@@ -50,9 +70,13 @@ export class GpuGanWrapper {
             ))
         );
 
+        if (progressFn) progressFn(++currentBatch, totalProgress);
+
         const trainNoise = Matrix.random_normal_2d(batch.length, this.generator.inputSize, -1, 1);
         const ones = Matrix.fill_value([1], batch.length);
         this.chain.trainBatch(Array.from(Iter.zip(trainNoise, ones)));
+
+        if (progressFn) progressFn(++currentBatch, totalProgress);
     }
 
     public beforeTrain() {

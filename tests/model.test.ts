@@ -12,6 +12,7 @@ import {GpuGanWrapper, GpuModelWrapper} from "../src";
 
 import {SetupMockRandom} from "./mock/common";
 import * as ArrayUtils from "./utils/array";
+import {GpuWrapperTrainDefaultOpts} from "../src/model";
 
 function _simpleModel(optimizer = "sgd", loss = "mse") {
     const model = new SequentialModel(optimizer as any, loss as any)
@@ -25,6 +26,11 @@ const gpuOptions: IGPUSettings = {mode: "cpu"};
 const eps = 1e-5;
 
 const rndMock = SetupMockRandom([0.1, 0.2, 0.3, 0.2, 0.1], true)
+
+// Disable progress
+let origOptParallelTrain = GpuWrapperTrainDefaultOpts.progress;
+beforeAll(() => GpuWrapperTrainDefaultOpts.progress = false);
+afterAll(() => GpuWrapperTrainDefaultOpts.progress = origOptParallelTrain);
 
 describe("Should correctly compute model", () => {
     test.each([1, 4, 8, 32])

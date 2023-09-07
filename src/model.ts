@@ -1,6 +1,8 @@
 import {IModel} from "mind-net.js/engine/base";
 import {Matrix1D, Matrix2D} from "mind-net.js/engine/matrix";
-import {Iter, Matrix} from "mind-net.js";
+import {ProgressFn} from "mind-net.js/utils/fetch";
+import {ProgressOptions} from "mind-net.js/utils/progress"
+import {Iter, Matrix, ProgressUtils, DefaultTrainOpts} from "mind-net.js";
 
 import {GPU, IGPUSettings} from "gpu.js";
 import {GpuWrappedLayer} from "./layer";
@@ -12,6 +14,18 @@ export type GpuWrapperOptionsT = {
 
 export const GpuWrapperOptsDefault: GpuWrapperOptionsT = {
     batchSize: 128
+}
+
+export type GpuWrapperTrainOptionsT = {
+    epochs: number,
+    progress: boolean,
+    progressOptions: Partial<ProgressOptions>
+}
+
+export const GpuWrapperTrainDefaultOpts: GpuWrapperTrainOptionsT = {
+    epochs: DefaultTrainOpts.epochs,
+    progress: DefaultTrainOpts.progress,
+    progressOptions: DefaultTrainOpts.progressOptions
 }
 
 export class GpuModelWrapper {
@@ -55,15 +69,24 @@ export class GpuModelWrapper {
         return result;
     }
 
-    public train(input: Matrix2D, expected: Matrix2D, {epochs = 1} = {}) {
+    public train(input: Matrix2D, expected: Matrix2D, options: Partial<GpuWrapperTrainOptionsT> = {}) {
         this._assertNotDestroyed();
 
-        for (let i = 0; i < epochs; i++) {
+        const opts = {...GpuWrapperTrainDefaultOpts, ...options};
+        const batchCtrl = opts.progress
+            ? ProgressUtils.progressBatchCallback(input.length, opts.epochs, opts.progressOptions)
+            : undefined;
+
+        batchCtrl?.progress();
+        for (let i = 0; i < opts.epochs; i++) {
             this.model.beforeTrain();
 
             const shuffled = Iter.shuffled(Array.from(Iter.zip(input, expected)));
             for (const batch of Iter.partition(shuffled, this.batchSize)) {
                 this.trainBatch(batch);
+
+                batchCtrl?.add(batch.length);
+                batchCtrl?.progress();
             }
 
             this.model.afterTrain();
