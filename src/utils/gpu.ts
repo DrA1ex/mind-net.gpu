@@ -1,8 +1,16 @@
 import {ISingleValueActivation} from "mind-net.js/engine/base";
-import {GPU, Kernel} from "gpu.js";
+import {GPU, Kernel, Texture} from "gpu.js";
 
 import {GpuWrappedLayer} from "../layer";
 import * as FunctionUtils from "./function";
+import {GpuArray1D, GpuArray2D} from "../base";
+
+type ForwardKernelReturnT = { prime: GpuArray2D, result: GpuArray2D }
+export type ForwardKernelFn = (input: GpuArray2D, weights: GpuArray2D, biases: GpuArray1D, actualSize: number) => ForwardKernelReturnT;
+
+export type KernelReturnT = Texture | Float32Array;
+type BackwardKernelReturnT = { dW: KernelReturnT, dB: KernelReturnT, dError: KernelReturnT };
+export type BackwardKernelFn = (error: GpuArray2D, prime: GpuArray2D, input: GpuArray2D, weights: GpuArray2D, actualSize: number) => BackwardKernelReturnT;
 
 export function getActivation(layer: GpuWrappedLayer): ISingleValueActivation {
     const activation = layer.activation;
@@ -14,7 +22,7 @@ export function getActivation(layer: GpuWrappedLayer): ISingleValueActivation {
 
 export function createForwardKernel(
     gpu: GPU, layer: GpuWrappedLayer, batchSize: number
-): [Kernel, Kernel[]] {
+): [ForwardKernelFn, Kernel[]] {
     const activation = getActivation(layer);
 
     const kResult = gpu
@@ -42,12 +50,12 @@ export function createForwardKernel(
         .setOutput([layer.size, batchSize])
         .setTactic("precision");
 
-    return [kResult, [kResult]];
+    return [kResult as any, [kResult]];
 }
 
 export function createBackwardKernel(
     gpu: GPU, layer: GpuWrappedLayer, batchSize: number, skipErrorCalc: boolean
-): [Kernel, Kernel[]] {
+): [BackwardKernelFn, Kernel[]] {
     const activation = getActivation(layer);
 
     const kGradient = gpu
@@ -126,5 +134,5 @@ export function createBackwardKernel(
             return {dB, dW, dError}
         });
 
-    return [kResult, kernels];
+    return [kResult as any, kernels];
 }

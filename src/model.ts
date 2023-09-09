@@ -1,11 +1,11 @@
 import {IModel} from "mind-net.js/engine/base";
-import {Matrix1D, Matrix2D} from "mind-net.js/engine/matrix";
-import {ProgressFn} from "mind-net.js/utils/fetch";
 import {ProgressOptions} from "mind-net.js/utils/progress"
-import {Iter, Matrix, ProgressUtils, DefaultTrainOpts} from "mind-net.js";
-
+import {Iter, ProgressUtils, DefaultTrainOpts} from "mind-net.js";
 import {GPU, IGPUSettings} from "gpu.js";
+
+import {GpuArray1D, GpuArray2D} from "./base";
 import {GpuWrappedLayer} from "./layer";
+import * as CommonUtils from "./utils/common";
 
 export type GpuWrapperOptionsT = {
     batchSize: number,
@@ -32,7 +32,9 @@ export class GpuModelWrapper {
     private readonly gpu: GPU;
     private actualSize: number = 0;
     private _destroyed = false;
-    private _lossCache: Matrix1D[];
+
+    private readonly _lossCache: Float32Array[];
+    private readonly _inputCache: Float32Array[];
 
     public get isDestroyed() {return this._destroyed;}
     public readonly layers: GpuWrappedLayer[];
@@ -54,13 +56,16 @@ export class GpuModelWrapper {
             this.layers[i - 1] = new GpuWrappedLayer(this.gpu, model.layers[i], i, this.batchSize);
         }
 
-        this._lossCache = Matrix.zero_2d(opts.batchSize, model.outputSize);
+        this._inputCache = CommonUtils.splitBatches(
+            new Float32Array(this.batchSize * this.model.inputSize), this.model.inputSize)
+        this._lossCache = CommonUtils.splitBatches(
+            new Float32Array(this.batchSize * this.model.outputSize), this.model.outputSize);
     }
 
-    public compute(input: Matrix2D) {
+    public compute(input: GpuArray2D) {
         this._assertNotDestroyed();
 
-        const result: Matrix2D = [];
+        const result: GpuArray1D[] = [];
         for (const batch of Iter.partition(input, this.batchSize)) {
             const out = this.forward(batch, false);
             result.push(...out);
@@ -69,7 +74,7 @@ export class GpuModelWrapper {
         return result;
     }
 
-    public train(input: Matrix2D, expected: Matrix2D, options: Partial<GpuWrapperTrainOptionsT> = {}) {
+    public train(input: GpuArray2D, expected: GpuArray2D, options: Partial<GpuWrapperTrainOptionsT> = {}) {
         this._assertNotDestroyed();
 
         const opts = {...GpuWrapperTrainDefaultOpts, ...options};
@@ -93,7 +98,7 @@ export class GpuModelWrapper {
         }
     }
 
-    public trainBatch(batch: [Matrix1D, Matrix1D][]) {
+    public trainBatch(batch: [GpuArray1D, GpuArray1D][]) {
         this._assertNotDestroyed();
 
         const input = batch.map(b => b[0]);
@@ -113,12 +118,14 @@ export class GpuModelWrapper {
         this._destroyed = true;
     }
 
-    private forward(input: Matrix2D, isTraining: boolean): Matrix2D {
+    private forward(input: GpuArray2D, isTraining: boolean): GpuArray2D {
         if (input.length > this.batchSize) throw new Error("Input can't be greater than batchSize")
         if (input[0].length !== this.inputSize) throw new Error(`Wrong input dimension. Expected ${this.inputSize} got ${input[0].length}`);
 
+        CommonUtils.setArray(input, this._inputCache);
+
         this.actualSize = input.length;
-        let nexInput = input;
+        let nexInput: GpuArray2D = this._inputCache;
         for (const layer of this.layers) {
             nexInput = layer.forward(nexInput, this.actualSize, isTraining);
         }
@@ -126,14 +133,18 @@ export class GpuModelWrapper {
         return nexInput.slice(0, this.actualSize);
     }
 
-    private backward(predicted: Matrix2D, expected: Matrix2D) {
+    private backward(predicted: GpuArray2D, expected: GpuArray2D) {
         if (!this.actualSize) throw new Error("Not ready for backward pass");
         if (predicted.length > this.batchSize || expected.length > this.batchSize) throw new Error("Input/Output can't be greater than batchSize")
         if (predicted.length !== expected.length) throw new Error("Input and expected data sizes doesn't match!");
         if (predicted[0].length !== this.outputSize) throw new Error(`Wrong predicted dimension. Expected ${this.inputSize} got ${predicted[0].length}`);
         if (expected[0].length !== this.outputSize) throw new Error(`Wrong expected dimension. Expected ${this.outputSize} got ${expected[0].length}`);
 
-        let nextError = predicted.map((p, i) => this.model.loss.calculateError(p, expected[i], this._lossCache[i]));
+        for (let i = 0; i < predicted.length; i++) {
+            this.model.loss.calculateError(predicted[i], expected[i], this._lossCache[i]);
+        }
+
+        let nextError: GpuArray2D = this._lossCache;
         for (let i = this.layers.length - 1; i >= 0; i--) {
             const layer = this.layers[i];
             const res = layer.backward(nextError, this.actualSize);

@@ -1,7 +1,7 @@
-import {Matrix1D, Matrix2D} from "mind-net.js/engine/matrix";
 import {ProgressFn} from "mind-net.js/utils/fetch";
 import {GenerativeAdversarialModel, Iter, Matrix, ProgressUtils} from "mind-net.js";
 
+import {GpuArray1D, GpuArray2D} from "./base";
 import {
     GpuModelWrapper,
     GpuWrapperOptionsT,
@@ -26,11 +26,11 @@ export class GpuGanWrapper {
         this.chain = new GpuModelWrapper(gan.ganChain, opts);
     }
 
-    public compute(input: Matrix2D): Matrix2D {
+    public compute(input: GpuArray2D): GpuArray2D {
         return this.generator.compute(input);
     }
 
-    public train(real: Matrix1D[], options: Partial<GpuWrapperTrainOptionsT> = {}) {
+    public train(real: GpuArray1D[], options: Partial<GpuWrapperTrainOptionsT> = {}) {
         const opts = {...GpuWrapperTrainDefaultOpts, ...options};
 
         const batchCtrl = opts.progress
@@ -52,7 +52,7 @@ export class GpuGanWrapper {
         }
     }
 
-    public trainBatch(batch: Matrix1D[], progressFn?: ProgressFn) {
+    public trainBatch(batch: GpuArray1D[], progressFn?: ProgressFn) {
         const totalProgress = 3;
         let currentBatch = 0;
 
